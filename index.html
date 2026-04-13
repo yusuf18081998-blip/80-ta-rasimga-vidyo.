@@ -189,6 +189,7 @@
         }
         .preview-section {
             margin-top: 30px;
+            display: none;
         }
         .preview-title {
             color: #333;
@@ -226,26 +227,12 @@
             color: #0c5460;
             border: 1px solid #bee5eb;
         }
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: #e0e0e0;
-            border-radius: 3px;
-            margin-top: 10px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            width: 0%;
-            transition: width 0.3s;
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🎬 Rasmlarni Videoga Aylantir</h1>
-        <p class="subtitle">80 ta rasmingizni videoga aylantiring - bepul va oson!</p>
+        <p class="subtitle">80 ta rasmingizni GIF videoga aylantiring - bepul va oson!</p>
         
         <div class="upload-section">
             <div class="upload-area" id="uploadArea">
@@ -260,32 +247,18 @@
             <div class="setting-group">
                 <label for="duration">
                     Har bir rasmning davomiyligi (sekund)
-                    <span class="range-value" id="durationValue">2</span>
+                    <span class="range-value" id="durationValue">1</span>
                 </label>
-                <input type="range" id="duration" min="0.5" max="10" step="0.5" value="2">
+                <input type="range" id="duration" min="0.2" max="5" step="0.2" value="1">
             </div>
             
             <div class="setting-group">
-                <label for="transition">O'tish effekti</label>
-                <select id="transition">
-                    <option value="fade">Fade (So'nib o'tish)</option>
-                    <option value="slide">Slide (Surila o'tish)</option>
-                    <option value="zoom">Zoom (Kattalashib o'tish)</option>
-                    <option value="none">Hech qanday</option>
-                </select>
-            </div>
-
-            <div class="setting-group">
-                <label for="music">Fon musiqa (URL)</label>
-                <input type="text" id="music" placeholder="https://example.com/music.mp3 (ixtiyoriy)">
-            </div>
-
-            <div class="setting-group">
-                <label for="fps">Video sifati (FPS)</label>
-                <select id="fps">
-                    <option value="24">24 FPS (Standard)</option>
-                    <option value="30">30 FPS (Yaxshi)</option>
-                    <option value="60">60 FPS (Juda yaxshi)</option>
+                <label for="quality">GIF sifati (yuqori = katta fayl)</label>
+                <select id="quality">
+                    <option value="10">Tez yuklanish (kam sifat)</option>
+                    <option value="5" selected>Standart</option>
+                    <option value="3">Yaxshi sifat</option>
+                    <option value="2">Juda yaxshi sifat</option>
                 </select>
             </div>
         </div>
@@ -297,18 +270,19 @@
 
         <div class="button-group">
             <button class="btn-secondary" id="clearBtn">Tozalash</button>
-            <button class="btn-primary" id="generateBtn" disabled>Video Yaratish</button>
+            <button class="btn-primary" id="generateBtn" disabled>GIF Yaratish</button>
         </div>
 
         <div class="status" id="status"></div>
 
-        <div class="preview-section" style="display: none;" id="previewSection">
+        <div class="preview-section" id="previewSection">
             <div class="preview-title">Tasvir:</div>
-            <video id="preview" controls></video>
-            <button class="btn-primary" id="downloadBtn" style="margin-top: 15px; width: 100%;">📥 Videoni Yuklab Ol</button>
+            <img id="preview" alt="GIF preview" style="width: 100%; border-radius: 10px; background: #000; max-height: 400px;">
+            <button class="btn-primary" id="downloadBtn" style="margin-top: 15px; width: 100%;">📥 GIF ni Yuklab Ol</button>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
     <script>
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -325,7 +299,7 @@
         const durationValue = document.getElementById('durationValue');
         
         let images = [];
-        let videoBlob = null;
+        let gifBlob = null;
 
         durationInput.addEventListener('input', (e) => {
             durationValue.textContent = e.target.value;
@@ -399,92 +373,87 @@
             updateImageList();
             fileInput.value = '';
             previewSection.style.display = 'none';
-            videoBlob = null;
+            gifBlob = null;
         });
 
-        generateBtn.addEventListener('click', generateVideo);
+        generateBtn.addEventListener('click', generateGIF);
 
-        async function generateVideo() {
+        async function generateGIF() {
             if (images.length === 0) {
                 showStatus('Avval rasmlarni yuklang!', 'error');
                 return;
             }
 
             generateBtn.disabled = true;
-            showStatus('Video yaratilmoqda... bu bir muncha vaqt olishi mumkin', 'info');
+            showStatus('GIF yaratilmoqda... bir muncha vaqt olishi mumkin', 'info');
 
             try {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = 1080;
-                canvas.height = 1920;
+                const duration = Math.round(parseFloat(document.getElementById('duration').value) * 1000);
+                const quality = parseInt(document.getElementById('quality').value);
 
-                const duration = parseFloat(document.getElementById('duration').value);
-                const transition = document.getElementById('transition').value;
-                const fps = parseInt(document.getElementById('fps').value);
-                
-                // Canvas sifatiga FFmpeg o'rniga Canvas API ishlatamiz
-                const stream = canvas.captureStream(fps);
-                let mimeType = 'video/webm';
-                if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
-                    mimeType = 'video/webm;codecs=vp8';
-                } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-                    mimeType = 'video/mp4';
-                }
-                
-                const mediaRecorder = new MediaRecorder(stream, {
-                    mimeType: mimeType,
-                    videoBitsPerSecond: 2500000
+                const gif = new GIF({
+                    workers: 2,
+                    quality: quality,
+                    width: 1080,
+                    height: 1920,
+                    workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'
                 });
 
-                const chunks = [];
-                mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-                mediaRecorder.onstop = () => {
-                    videoBlob = new Blob(chunks, { type: 'video/webm' });
-                    const videoUrl = URL.createObjectURL(videoBlob);
-                    preview.src = videoUrl;
-                    previewSection.style.display = 'block';
-                    showStatus('✅ Video tayyor! Yuklab oling.', 'success');
-                    generateBtn.disabled = false;
-                };
+                let processedCount = 0;
 
-                mediaRecorder.start();
+                function processImage(index) {
+                    if (index >= images.length) {
+                        gif.render();
+                        return;
+                    }
 
-                // Har bir rasmi ekranga chizamiz
-                let frameCount = 0;
-                const totalFrames = images.length * duration * fps;
-                const frameDuration = 1000 / fps;
-
-                for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
                     const img = new Image();
                     img.onload = () => {
-                        const frameStart = imgIdx * duration * fps;
-                        const frameEnd = frameStart + duration * fps;
-
-                        // Rasmi ekranga chiz
-                        for (let f = frameStart; f < frameEnd; f++) {
-                            // Fonda
-                            ctx.fillStyle = '#000';
-                            ctx.fillRect(0, 0, canvas.width, canvas.height);
-                            
-                            // Rasmni center qilib chiz
-                            const scale = Math.min(
-                                canvas.width / img.width,
-                                canvas.height / img.height
-                            );
-                            const x = (canvas.width - img.width * scale) / 2;
-                            const y = (canvas.height - img.height * scale) / 2;
-                            
-                            ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
-                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 1080;
+                        canvas.height = 1920;
+                        const ctx = canvas.getContext('2d');
+                        
+                        ctx.fillStyle = '#000';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        
+                        const scale = Math.min(
+                            canvas.width / img.width,
+                            canvas.height / img.height
+                        );
+                        const x = (canvas.width - img.width * scale) / 2;
+                        const y = (canvas.height - img.height * scale) / 2;
+                        
+                        ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+                        gif.addFrame(canvas, { delay: duration });
+                        
+                        processedCount++;
+                        showStatus(`GIF yaratilmoqda: ${Math.round((processedCount / images.length) * 100)}%`, 'info');
+                        
+                        processImage(index + 1);
                     };
-                    img.src = images[imgIdx].src;
+                    img.onerror = () => {
+                        processedCount++;
+                        processImage(index + 1);
+                    };
+                    img.src = images[index].src;
                 }
 
-                // 5 soniyadan keyin video yop
-                setTimeout(() => {
-                    mediaRecorder.stop();
-                }, (images.length * duration + 1) * 1000);
+                gif.on('finished', function(blob) {
+                    gifBlob = blob;
+                    const gifUrl = URL.createObjectURL(blob);
+                    preview.src = gifUrl;
+                    previewSection.style.display = 'block';
+                    showStatus('✅ GIF tayyor! Yuklab oling.', 'success');
+                    generateBtn.disabled = false;
+                });
+
+                gif.on('error', function(error) {
+                    showStatus('Xato: ' + error, 'error');
+                    generateBtn.disabled = false;
+                });
+
+                processImage(0);
 
             } catch (error) {
                 showStatus('Xato: ' + error.message, 'error');
@@ -493,12 +462,11 @@
         }
 
         downloadBtn.addEventListener('click', () => {
-            if (!videoBlob) return;
-            const url = URL.createObjectURL(videoBlob);
+            if (!gifBlob) return;
+            const url = URL.createObjectURL(gifBlob);
             const a = document.createElement('a');
             a.href = url;
-            const ext = videoBlob.type.includes('mp4') ? '.mp4' : '.webm';
-            a.download = 'video_' + new Date().getTime() + ext;
+            a.download = 'slideshow_' + new Date().getTime() + '.gif';
             a.click();
             URL.revokeObjectURL(url);
         });
